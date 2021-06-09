@@ -2,6 +2,7 @@
 
 function loadLevel()
 	require "charm"
+	require "adventure"
 	
 	-- "Consts"
 	GRID_SIZE = 9
@@ -11,20 +12,6 @@ function loadLevel()
 	CORNER_BUFFER = {}
 	CORNER_BUFFER.x = frameC:getWidth() - CHARM_SIZE
 	CORNER_BUFFER.y = frameC:getHeight() - CHARM_SIZE
-	
-	-- Objectives
-	objectives = {}
-	-- One objective per charm type
-	objectives[1] = 0
-	objectives[2] = 0
-	objectives[3] = 0
-	objectives[4] = 0
-	-- Objectives for clear size
-	objectives["small"] = 0
-	objectives["medium"] = 0
-	objectives["large"] = 0
-	objectives["square"] = 0
-	objectives["sijiao"] = 0
 	
 	-- Charm array
 	charms = {}
@@ -63,6 +50,18 @@ function loadLevel()
 	clearElapsed = 0
 	clearRect = {}
 	clearRect.alpha = clearTotal
+
+	-- Objectives
+	localObjectives = {}
+	localObjectives[1] = 0
+	localObjectives[2] = 0
+	localObjectives[3] = 0
+	localObjectives[4] = 0
+	localObjectives["small"] = 0
+	localObjectives["medium"] = 0
+	localObjectives["large"] = 0
+	localObjectives["square"] = 0
+	localObjectives["sijiao"] = 0
 	
 	-- Score
 	cleared = {}
@@ -140,6 +139,20 @@ function loadLevel()
 	sijiaoDisplay.offX = sijiaoDisplay.text:getWidth() / 2
 	sijiaoDisplay.offY = sijiaoDisplay.text:getHeight() / 2
 	
+	completeDisplay = {}
+	completeDisplay.text = love.graphics.newText(sijiaoFont, "CLEAR")
+	completeDisplay.ease = "expoout"
+	completeDisplay.timeIn = 0.5
+	completeDisplay.timeOut = 0.6
+	completeDisplay.timeDelay = 2.2
+	completeDisplay.timeTotal = completeDisplay.timeIn + completeDisplay.timeOut + completeDisplay.timeDelay
+	completeDisplay.scale = 0
+	completeDisplay.alpha = 1
+	completeDisplay.x = love.graphics.getWidth() / 2
+	completeDisplay.y = love.graphics.getHeight() / 2
+	completeDisplay.offX = completeDisplay.text:getWidth() / 2
+	completeDisplay.offY = completeDisplay.text:getHeight() / 2
+	
 	specialDisplay = {}
 	specialDisplay.text = love.graphics.newText(noticeFont, 80)
 	specialDisplay.text:set("All clear!")
@@ -162,6 +175,10 @@ function loadLevel()
 	sfxSquare = love.audio.newSource("assets/snd/kalimbaclean.wav", "static")
 	sfxClearing = love.audio.newSource("assets/snd/clearing.wav", "static")
 	sfxSijiao = love.audio.newSource("assets/snd/sijiao.wav", "static")
+
+	-- Load first objective
+	currentLevel = 1
+	loadObjectives(currentLevel)
 end
 
 function updateLevel(dt)
@@ -178,7 +195,7 @@ function updateLevel(dt)
 		tileSelected = false
 	end
 	
-	-- Default state
+	-- State-specific updates
 	if currentState == levelStates.default then
 		-- Starting dragging from a valid tile area
 		if tileSelected and love.mouse.isDown(1) and not dragging then
@@ -204,10 +221,17 @@ function updateLevel(dt)
 				evalClear(lockX, lockY, mx, my)
 			end
 		end
+	
+		-- Check objectives
+		if checkObjectives(currentLevel) then
+			levelEnd()
+		end
 	elseif currentState == levelStates.clearing then
 		--doClear(clearCoords)
 	elseif currentState == levelStates.special then
 		-- ???
+	elseif currentState == levelStates.complete then
+		-- ...
 	end
 end
 
@@ -241,63 +265,71 @@ function drawLevel()
 	end
 	
 	-- Cursor
-	if dragging and currentState ~= levelStates.special then
-		-- Draw selector around lockX, lockY and mx, my
-		if not tileSelected then
-			mx, my = reign(mx, my)
+	-- Ignore complete state
+	if currentState ~= levelStates.complete then
+		if dragging and currentState ~= levelStates.special then
+			-- Draw selector around lockX, lockY and mx, my
+			if not tileSelected then
+				mx, my = reign(mx, my)
+			end
+			local lessX = math.min(lockX, mx)
+			local lessY = math.min(lockY, my)
+			local moreX = math.max(lockX, mx)
+			local moreY = math.max(lockY, my)
+			-- "Real" x, y values for drawing purposes; rx2 > rx1 and ry2 > ry1
+			rx1 = GRID_TL.x + (lessX - 1) * CHARM_SIZE
+			ry1 = GRID_TL.y + (lessY - 1) * CHARM_SIZE
+			rx2 = GRID_TL.x + (moreX - 1) * CHARM_SIZE
+			ry2 = GRID_TL.y + (moreY - 1) * CHARM_SIZE
+			
+			-- Highlight
+			love.graphics.setColor(1, 0.65, 0.45, 0.6)
+			love.graphics.rectangle("line", rx1, ry1, rx2 - rx1 + CHARM_SIZE, ry2 - ry1 + CHARM_SIZE)
+			love.graphics.setColor(1, 0.65, 0.45, 0.2)
+			love.graphics.rectangle("fill", rx1, ry1, rx2 - rx1 + CHARM_SIZE, ry2 - ry1 + CHARM_SIZE)
+			love.graphics.setColor(1, 1, 1, 1)
+			
+			-- Selector
+			love.graphics.draw(selectUL, rx1, ry1)
+			love.graphics.draw(selectUR, rx2, ry1)
+			love.graphics.draw(selectBR, rx2, ry2)
+			love.graphics.draw(selectBL, rx1, ry2)
+		elseif tileSelected then
+			-- If not dragging, draw all select corners at current highlighted grid
+			local selectX = GRID_TL.x + (mx - 1) * CHARM_SIZE
+			local selectY = GRID_TL.y + (my - 1) * CHARM_SIZE
+			
+			-- If in state special, change colour
+			if currentState == levelStates.special then
+				love.graphics.setBlendMode("lighten", "premultiplied")
+			end
+			love.graphics.draw(selectUL, selectX, selectY)
+			love.graphics.draw(selectUR, selectX, selectY)
+			love.graphics.draw(selectBR, selectX, selectY)
+			love.graphics.draw(selectBL, selectX, selectY)
+			love.graphics.setBlendMode("alpha")
 		end
-		local lessX = math.min(lockX, mx)
-		local lessY = math.min(lockY, my)
-		local moreX = math.max(lockX, mx)
-		local moreY = math.max(lockY, my)
-		-- "Real" x, y values for drawing purposes; rx2 > rx1 and ry2 > ry1
-		rx1 = GRID_TL.x + (lessX - 1) * CHARM_SIZE
-		ry1 = GRID_TL.y + (lessY - 1) * CHARM_SIZE
-		rx2 = GRID_TL.x + (moreX - 1) * CHARM_SIZE
-		ry2 = GRID_TL.y + (moreY - 1) * CHARM_SIZE
-		
-		-- Highlight
-		love.graphics.setColor(1, 0.65, 0.45, 0.6)
-		love.graphics.rectangle("line", rx1, ry1, rx2 - rx1 + CHARM_SIZE, ry2 - ry1 + CHARM_SIZE)
-		love.graphics.setColor(1, 0.65, 0.45, 0.2)
-		love.graphics.rectangle("fill", rx1, ry1, rx2 - rx1 + CHARM_SIZE, ry2 - ry1 + CHARM_SIZE)
-		love.graphics.setColor(1, 1, 1, 1)
-		
-		-- Selector
-		love.graphics.draw(selectUL, rx1, ry1)
-		love.graphics.draw(selectUR, rx2, ry1)
-		love.graphics.draw(selectBR, rx2, ry2)
-		love.graphics.draw(selectBL, rx1, ry2)
-	elseif tileSelected then
-		-- If not dragging, draw all select corners at current highlighted grid
-		local selectX = GRID_TL.x + (mx - 1) * CHARM_SIZE
-		local selectY = GRID_TL.y + (my - 1) * CHARM_SIZE
-		
-		-- If in state special, change colour
-		if currentState == levelStates.special then
-			love.graphics.setBlendMode("lighten", "premultiplied")
+	
+		if currentState == levelStates.clearing then
+			love.graphics.setColor(1, 1, 1, clearRect.alpha)
+			love.graphics.rectangle("fill", rx1, ry1, rx2 - rx1 + CHARM_SIZE, ry2 - ry1 + CHARM_SIZE)
+			love.graphics.setColor(1, 1, 1, 1)
 		end
-		love.graphics.draw(selectUL, selectX, selectY)
-		love.graphics.draw(selectUR, selectX, selectY)
-		love.graphics.draw(selectBR, selectX, selectY)
-		love.graphics.draw(selectBL, selectX, selectY)
-		love.graphics.setBlendMode("alpha")
-	end
 	
-	if currentState == levelStates.clearing then
-		love.graphics.setColor(1, 1, 1, clearRect.alpha)
-		love.graphics.rectangle("fill", rx1, ry1, rx2 - rx1 + CHARM_SIZE, ry2 - ry1 + CHARM_SIZE)
+		-- Notice texts
+		love.graphics.draw(specialDisplay.text, specialDisplay.x, specialDisplay.y, specialDisplay.r, specialDisplay.scale, specialDisplay.scale, specialDisplay.offX, specialDisplay.offY)
+		love.graphics.draw(notice.text, notice.x, notice.y, notice.r, notice.scale, notice.scale, notice.offX, notice.offY)
+		love.graphics.draw(square.text, square.x, square.y, notice.r, square.scale, square.scale, square.offX, square.offY)
+		
+		-- Sijiao
+		love.graphics.setColor(1, 1, 1, sijiaoDisplay.alpha)
+		love.graphics.draw(sijiaoDisplay.text, sijiaoDisplay.x, sijiaoDisplay.y, 0, sijiaoDisplay.scale, sijiaoDisplay.scale, sijiaoDisplay.offX, sijiaoDisplay.offY)
+		love.graphics.setColor(1, 1, 1, 1)
+	else -- Complete
+		love.graphics.setColor(1, 1, 1, completeDisplay.alpha)
+		love.graphics.draw(completeDisplay.text, completeDisplay.x, completeDisplay.y, 0, completeDisplay.scale, completeDisplay.scale, completeDisplay.offX, completeDisplay.offY)
 		love.graphics.setColor(1, 1, 1, 1)
 	end
-	
-	love.graphics.draw(specialDisplay.text, specialDisplay.x, specialDisplay.y, specialDisplay.r, specialDisplay.scale, specialDisplay.scale, specialDisplay.offX, specialDisplay.offY)
-	love.graphics.draw(notice.text, notice.x, notice.y, notice.r, notice.scale, notice.scale, notice.offX, notice.offY)
-	love.graphics.draw(square.text, square.x, square.y, notice.r, square.scale, square.scale, square.offX, square.offY)
-	
-	-- Sijiao
-	love.graphics.setColor(1, 1, 1, sijiaoDisplay.alpha)
-	love.graphics.draw(sijiaoDisplay.text, sijiaoDisplay.x, sijiaoDisplay.y, 0, sijiaoDisplay.scale, sijiaoDisplay.scale, sijiaoDisplay.offX, sijiaoDisplay.offY)
-	love.graphics.setColor(1, 1, 1, 1)
 	
 	-- Recents
 	for i in pairs(recent) do
@@ -306,6 +338,64 @@ function drawLevel()
 	
 	-- Score
 	drawScore()
+end
+
+function loadObjectives(levelNum)
+	-- Safety check
+	if levelNum > #adventureObjectives then
+		print("Invalid level number")
+		return
+	end
+	
+	-- Update all objectives
+	for k, v in pairs(adventureObjectives[levelNum]) do
+		localObjectives[k] = adventureObjectives[levelNum][k]
+	end
+end
+
+-- Returns true if all objectives met
+function checkObjectives(levelNum)
+	-- Safety check
+	if levelNum > #adventureObjectives then
+		print("Invalid level number")
+		return
+	end
+	
+	-- Check all local objectives against cleared counts
+	for k, v in pairs(localObjectives) do
+		-- Number types
+		if type(k) == "number" then
+			-- Return false if any do not meet or exceed
+			if cleared[k].score < localObjectives[k] then return false end
+		else -- String types
+			-- Return false if any do not meet or exceed
+			if cleared[k] < localObjectives[k] then return false end
+		end
+	end
+	
+	-- All checks passed, level cleared
+	return true
+end
+
+function levelEnd()
+	currentState = levelStates.complete
+	
+	-- Tween confirmation
+	completeDisplay.scale = 0
+	completeDisplay.alpha = 1
+	flux.to(completeDisplay, completeDisplay.timeIn, {scale = 1}):after(completeDisplay.timeOut, {alpha = 0}):delay(completeDisplay.timeDelay)
+	
+	-- Tween remove charms
+	for y = 1, GRID_SIZE do
+		for x = 1, GRID_SIZE do
+			flux.to(charms[x][y], completeDisplay.timeDelay, {scale = 0}):ease("expoin"):delay(completeDisplay.timeIn)
+		end
+	end
+	if #recent then
+		for i = 1, #recent do
+			flux.to(recent[i], completeDisplay.timeDelay, {scale = 0}):ease("expoin"):delay(completeDisplay.timeIn)
+		end
+	end
 end
 
 function evalClear(x1, y1, x2, y2)
@@ -400,20 +490,30 @@ function reign(x, y)
 end
 
 function drawScore()
+	local count = 1
 	for i = 1, 4 do
-		scoreText[i]:set(tostring(math.ceil(cleared[i].score)))
-		local ch = scoreCharms[i]
-		love.graphics.draw(ch.img, ch.x, ch.y)
-		love.graphics.draw(scoreText[i], 120, -48 + (80 * i))
+		-- Only display if in local objective
+		if localObjectives[i] ~= 0 then
+			scoreText[i]:set(tostring(math.ceil(cleared[i].score)))
+			local ch = scoreCharms[i]
+			love.graphics.draw(ch.img, ch.x, ch.y)
+			love.graphics.draw(scoreText[i], 120, -48 + (80 * count))
+			count = count + 1
+		end
 	end
 	
 	local sizes = {"small", "medium", "large", "square", "sijiao"}
 	local fx = GRID_TL.x + (GRID_SIZE * CHARM_SIZE) + (CORNER_BUFFER.x * 2)
 	local fy = GRID_TL.y
 	local fw = GRID_TL.x - CORNER_BUFFER.x * 3
+	count = 1
 	for i = 1, #sizes do
-		local ft = sizes[i]:gsub("^%l", string.upper) .. ": " .. tostring(cleared[sizes[i]])
-		love.graphics.printf(ft, theFont, fx, fy + CHARM_SIZE * (i-1) - 8, fw, "justify")
+		-- Only display if in local objective
+		if localObjectives[sizes[i]] ~= 0 then
+			local ft = sizes[i]:gsub("^%l", string.upper) .. ": " .. tostring(cleared[sizes[i]])
+			love.graphics.printf(ft, theFont, fx, fy + CHARM_SIZE * (count-1) - 8, fw, "justify")
+			count = count + 1
+		end
 	end
 end
 
