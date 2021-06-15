@@ -76,7 +76,7 @@ function loadLevel()
 	cleared["sijiao"] = 0
 	cleared.speed = 1
 	cleared.ease = "expoout"
-	theFont = love.graphics.newFont("assets/fnt/Merienda-Bold.ttf", 42)
+	theFont = love.graphics.newFont("assets/fnt/Merienda-Bold.ttf", 40)
 	scoreText = {love.graphics.newText(theFont, 100),
 							love.graphics.newText(theFont, 100),
 							love.graphics.newText(theFont, 100),
