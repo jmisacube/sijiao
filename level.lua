@@ -19,12 +19,6 @@ function loadLevel()
 		table.insert(charms, {})
 	end
 	
-	for y = 1, GRID_SIZE do
-		for x = 1, GRID_SIZE do
-			charms[x][y] = Charm(x, y)
-		end
-	end
-	
 	-- Selector
 	tileSelected = false
 	dragging = false
@@ -40,6 +34,8 @@ function loadLevel()
 	levelStates.default = 1
 	levelStates.clearing = 2
 	levelStates.special = 3
+	levelStates.complete = 4
+	levelStates.starting = 5
 	currentState = levelStates.default
 	
 	-- Saved coordinates to clear: x1, y1, x2, y2
@@ -153,6 +149,20 @@ function loadLevel()
 	completeDisplay.offX = completeDisplay.text:getWidth() / 2
 	completeDisplay.offY = completeDisplay.text:getHeight() / 2
 	
+	startDisplay = {}
+	startDisplay.text = love.graphics.newText(sijiaoFont, "READY")
+	startDisplay.ease = "expoout"
+	startDisplay.timeIn = 0.5
+	startDisplay.timeOut = 1
+	startDisplay.timeDelay = 1
+	startDisplay.timeTotal = startDisplay.timeIn + startDisplay.timeOut + startDisplay.timeDelay
+	startDisplay.scale = 0
+	startDisplay.alpha = 1
+	startDisplay.x = love.graphics.getWidth() / 2
+	startDisplay.y = love.graphics.getHeight() / 2
+	startDisplay.offX = startDisplay.text:getWidth() / 2
+	startDisplay.offY = startDisplay.text:getHeight() / 2
+	
 	specialDisplay = {}
 	specialDisplay.text = love.graphics.newText(noticeFont, 80)
 	specialDisplay.text:set("All clear!")
@@ -176,9 +186,8 @@ function loadLevel()
 	sfxClearing = love.audio.newSource("assets/snd/clearing.wav", "static")
 	sfxSijiao = love.audio.newSource("assets/snd/sijiao.wav", "static")
 
-	-- Load first objective
-	currentLevel = 1
-	loadObjectives(currentLevel)
+	-- Start first level
+	setLevel(1)
 end
 
 function updateLevel(dt)
@@ -267,7 +276,7 @@ function drawLevel()
 	-- Cursor
 	-- Ignore complete state
 	if currentState ~= levelStates.complete then
-		if dragging and currentState ~= levelStates.special then
+		if dragging and (currentState == levelStates.default or currentState == levelStates.clearing) then
 			-- Draw selector around lockX, lockY and mx, my
 			if not tileSelected then
 				mx, my = reign(mx, my)
@@ -300,7 +309,7 @@ function drawLevel()
 			local selectY = GRID_TL.y + (my - 1) * CHARM_SIZE
 			
 			-- If in state special, change colour
-			if currentState == levelStates.special then
+			if currentState == levelStates.special or currentState == levelStates.complete or currentState == levelStates.starting then
 				love.graphics.setBlendMode("lighten", "premultiplied")
 			end
 			love.graphics.draw(selectUL, selectX, selectY)
@@ -330,6 +339,10 @@ function drawLevel()
 		love.graphics.draw(completeDisplay.text, completeDisplay.x, completeDisplay.y, 0, completeDisplay.scale, completeDisplay.scale, completeDisplay.offX, completeDisplay.offY)
 		love.graphics.setColor(1, 1, 1, 1)
 	end
+	
+	love.graphics.setColor(1, 1, 1, startDisplay.alpha)
+	love.graphics.draw(startDisplay.text, startDisplay.x, startDisplay.y, 0, startDisplay.scale, startDisplay.scale, startDisplay.offX, startDisplay.offY)
+	love.graphics.setColor(1, 1, 1, 1)
 	
 	-- Recents
 	for i in pairs(recent) do
@@ -379,11 +392,12 @@ end
 
 function levelEnd()
 	currentState = levelStates.complete
+	print("levelEnd")
 	
 	-- Tween confirmation
 	completeDisplay.scale = 0
 	completeDisplay.alpha = 1
-	flux.to(completeDisplay, completeDisplay.timeIn, {scale = 1}):after(completeDisplay.timeOut, {alpha = 0}):delay(completeDisplay.timeDelay)
+	flux.to(completeDisplay, completeDisplay.timeIn, {scale = 1}):after(completeDisplay.timeOut, {alpha = 0}):delay(completeDisplay.timeDelay):oncomplete(function() nextLevel() end)
 	
 	-- Tween remove charms
 	for y = 1, GRID_SIZE do
@@ -396,6 +410,57 @@ function levelEnd()
 			flux.to(recent[i], completeDisplay.timeDelay, {scale = 0}):ease("expoin"):delay(completeDisplay.timeIn)
 		end
 	end
+end
+
+function nextLevel()
+	setLevel(currentLevel + 1)
+end
+
+function setLevel(lvl)
+	currentLevel = lvl
+	if currentLevel > #adventureObjectives then
+		-- No more levels
+		return
+	end
+	
+	loadObjectives(currentLevel)
+	makeAllCharms()
+	clearScore()
+	startDisplay.text:set("READY")
+	startDisplay.offX = startDisplay.text:getWidth() / 2
+	startDisplay.offY = startDisplay.text:getHeight() / 2
+	startDisplay.scale = 0
+	startDisplay.alpha = 1
+	flux.to(startDisplay, startDisplay.timeIn, {scale = 1}):ease(startDisplay.ease):after(startDisplay.timeOut, {alpha = 0}):ease("linear"):delay(startDisplay.timeDelay):onstart(function() finishStartDisplay() end)
+	currentState = levelStates.starting
+end
+
+function finishStartDisplay()
+	startDisplay.text:set("START")
+	startDisplay.offX = startDisplay.text:getWidth() / 2
+	startDisplay.offY = startDisplay.text:getHeight() / 2
+	currentState = levelStates.default
+end
+
+function makeAllCharms()
+	for y = 1, GRID_SIZE do
+		for x = 1, GRID_SIZE do
+			charms[x][y] = Charm(x, y)
+			charms[x][y].scale = 0
+			flux.to(charms[x][y], cleared.speed, {scale = 1}):ease(cleared.ease)
+		end
+	end
+end
+
+function clearScore()
+	for i = 1, 4 do
+		cleared[i].score = 0
+	end
+	cleared["small"] = 0
+	cleared["medium"] = 0
+	cleared["large"] = 0
+	cleared["square"] = 0
+	cleared["sijiao"] = 0
 end
 
 function evalClear(x1, y1, x2, y2)
@@ -476,7 +541,7 @@ function doClear(x, y)
 	replaceCharm(x, y)
 	
 	-- Only return to default state if not doing a special clear
-	if currentState ~= levelStates.special then
+	if currentState ~= levelStates.special and currentState ~= levelStates.complete then
 		currentState = levelStates.default
 	end
 end
@@ -494,9 +559,9 @@ function drawScore()
 	for i = 1, 4 do
 		-- Only display if in local objective
 		if localObjectives[i] ~= 0 then
-			scoreText[i]:set(tostring(math.ceil(cleared[i].score)))
+			scoreText[i]:set(tostring(math.ceil(cleared[i].score)) .. "/" .. tostring(localObjectives[i]))
 			local ch = scoreCharms[i]
-			love.graphics.draw(ch.img, ch.x, ch.y)
+			love.graphics.draw(ch.img, ch.x, GRID_TL.y + 80 * (count - 1) - 8)
 			love.graphics.draw(scoreText[i], 120, -48 + (80 * count))
 			count = count + 1
 		end
@@ -510,7 +575,7 @@ function drawScore()
 	for i = 1, #sizes do
 		-- Only display if in local objective
 		if localObjectives[sizes[i]] ~= 0 then
-			local ft = sizes[i]:gsub("^%l", string.upper) .. ": " .. tostring(cleared[sizes[i]])
+			local ft = sizes[i]:gsub("^%l", string.upper) .. ": " .. tostring(cleared[sizes[i]]) .. "/" .. tostring(localObjectives[sizes[i]])
 			love.graphics.printf(ft, theFont, fx, fy + CHARM_SIZE * (count-1) - 8, fw, "justify")
 			count = count + 1
 		end
@@ -682,7 +747,7 @@ function replaceCharm(x, y, notType)
 		t = love.math.random(4)
 	end
 	-- Make charm in array
-	print("Making charm type " .. tostring(t) .. " at " .. tostring(x) .. ", " .. tostring(y))
+	-- print("Making charm type " .. tostring(t) .. " at " .. tostring(x) .. ", " .. tostring(y))
 	charms[x][y] = Charm(x, y, t)
 	-- Setup tween in
 	charms[x][y].scale = 0
