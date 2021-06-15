@@ -136,6 +136,8 @@ function loadLevel()
 	sijiaoDisplay.offY = sijiaoDisplay.text:getHeight() / 2
 	
 	completeDisplay = {}
+	completeDisplay.wait = 0
+	completeDisplay.waitMax = 0.7
 	completeDisplay.text = love.graphics.newText(sijiaoFont, "CLEAR")
 	completeDisplay.ease = "expoout"
 	completeDisplay.timeIn = 0.5
@@ -232,8 +234,10 @@ function updateLevel(dt)
 		end
 	
 		-- Check objectives
-		if checkObjectives(currentLevel) then
-			levelEnd()
+		if checkObjectives(currentLevel) and currentState == levelStates.default then
+			completeDisplay.wait = 0
+			currentState = levelStates.complete
+			flux.to(completeDisplay, completeDisplay.waitMax, {wait = completeDisplay.waitMax}):oncomplete(function() levelEnd() end)
 		end
 	elseif currentState == levelStates.clearing then
 		--doClear(clearCoords)
@@ -245,6 +249,9 @@ function updateLevel(dt)
 end
 
 function drawLevel()
+	-- DEBUG
+	--love.graphics.print(tostring(currentState))
+
 	-- Corners
 	-- 								(frameC,   x,  y, r, h, v)
 	love.graphics.draw(frameC, GRID_TL.x - CORNER_BUFFER.x, GRID_TL.y - CORNER_BUFFER.y, 0, 1, 1)
@@ -324,11 +331,6 @@ function drawLevel()
 			love.graphics.rectangle("fill", rx1, ry1, rx2 - rx1 + CHARM_SIZE, ry2 - ry1 + CHARM_SIZE)
 			love.graphics.setColor(1, 1, 1, 1)
 		end
-	
-		-- Notice texts
-		love.graphics.draw(specialDisplay.text, specialDisplay.x, specialDisplay.y, specialDisplay.r, specialDisplay.scale, specialDisplay.scale, specialDisplay.offX, specialDisplay.offY)
-		love.graphics.draw(notice.text, notice.x, notice.y, notice.r, notice.scale, notice.scale, notice.offX, notice.offY)
-		love.graphics.draw(square.text, square.x, square.y, notice.r, square.scale, square.scale, square.offX, square.offY)
 		
 		-- Sijiao
 		love.graphics.setColor(1, 1, 1, sijiaoDisplay.alpha)
@@ -339,6 +341,11 @@ function drawLevel()
 		love.graphics.draw(completeDisplay.text, completeDisplay.x, completeDisplay.y, 0, completeDisplay.scale, completeDisplay.scale, completeDisplay.offX, completeDisplay.offY)
 		love.graphics.setColor(1, 1, 1, 1)
 	end
+	
+	-- Notice texts
+	love.graphics.draw(specialDisplay.text, specialDisplay.x, specialDisplay.y, specialDisplay.r, specialDisplay.scale, specialDisplay.scale, specialDisplay.offX, specialDisplay.offY)
+	love.graphics.draw(notice.text, notice.x, notice.y, notice.r, notice.scale, notice.scale, notice.offX, notice.offY)
+	love.graphics.draw(square.text, square.x, square.y, notice.r, square.scale, square.scale, square.offX, square.offY)
 	
 	love.graphics.setColor(1, 1, 1, startDisplay.alpha)
 	love.graphics.draw(startDisplay.text, startDisplay.x, startDisplay.y, 0, startDisplay.scale, startDisplay.scale, startDisplay.offX, startDisplay.offY)
@@ -426,6 +433,7 @@ function setLevel(lvl)
 	loadObjectives(currentLevel)
 	makeAllCharms()
 	clearScore()
+	clearRecent()
 	startDisplay.text:set("READY")
 	startDisplay.offX = startDisplay.text:getWidth() / 2
 	startDisplay.offY = startDisplay.text:getHeight() / 2
@@ -446,6 +454,12 @@ function makeAllCharms()
 	for y = 1, GRID_SIZE do
 		for x = 1, GRID_SIZE do
 			charms[x][y] = Charm(x, y)
+			
+			-- DEBUG sijiao
+			--if x == 1 or x == 9 or y == 1 or y == 9 then
+			--	charms[x][y]:setType(2)
+			--end
+			
 			charms[x][y].scale = 0
 			flux.to(charms[x][y], cleared.speed, {scale = 1}):ease(cleared.ease)
 		end
@@ -492,6 +506,7 @@ function evalClear(x1, y1, x2, y2)
 		if (math.abs(x1 - x2) + 1) * (math.abs(y1 - y2) + 1) == GRID_SIZE * GRID_SIZE then
 			easeType = sijiaoDisplay.ease
 			easeTime = sijiaoDisplay.timeTotal
+			currentState = levelStates.special
 		end
 		
 		local type = charms[x1][y1].type
@@ -509,7 +524,7 @@ function evalClear(x1, y1, x2, y2)
 		if count == GRID_SIZE * GRID_SIZE then
 			sijiaoDisplay.scale = 0
 			sijiaoDisplay.alpha = 1
-			flux.to(sijiaoDisplay, sijiaoDisplay.timeIn, {scale = 1}):after(sijiaoDisplay.timeOut, {alpha = 0})
+			flux.to(sijiaoDisplay, sijiaoDisplay.timeIn, {scale = 1}):after(sijiaoDisplay.timeOut, {alpha = 0}):oncomplete(function() currentState = levelStates.default end)
 		end
 		
 		-- Tween clear rectangle
@@ -692,7 +707,9 @@ end
 
 function finishRemoving()
 	clearRecent()
-	currentState = levelStates.default
+	if currentState ~= levelStates.complete then
+		currentState = levelStates.default
+	end
 end
 
 -- Performs the removal of like charms from one diagonal (at comboTween.diag)
