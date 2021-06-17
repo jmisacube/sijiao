@@ -21,7 +21,7 @@ function setObjective(n, ch1, ch2, ch3, ch4, sm, med, lg, sq, sj)
 	table.insert(adventureObjectives, t)
 end
 
-setObjective(1, 0, 10, 0, 0, 0, 0, 0, 0, 0)
+setObjective(1, 10, 0, 0, 0, 0, 0, 0, 0, 0)
 setObjective(2, 10, 10, 0, 0, 0, 0, 0, 0, 0)
 setObjective(3, 0, 0, 20, 20, 0, 0, 0, 0, 0)
 setObjective(4, 20, 20, 20, 20, 0, 0, 0, 0, 0)

@@ -36,6 +36,7 @@ function loadLevel()
 	levelStates.special = 3
 	levelStates.complete = 4
 	levelStates.starting = 5
+	levelStates.sijiao = 6
 	currentState = levelStates.default
 	
 	-- Saved coordinates to clear: x1, y1, x2, y2
@@ -95,7 +96,7 @@ function loadLevel()
 	comboTween = {}
 	comboTween.diag = 1
 	comboTween.last = 0
-	comboTween.time = 1.5
+	comboTween.time = 1
 	
 	-- Text feedback
 	noticeFont = love.graphics.newFont("assets/fnt/Acme-Regular.ttf", 36)
@@ -316,7 +317,7 @@ function drawLevel()
 			local selectY = GRID_TL.y + (my - 1) * CHARM_SIZE
 			
 			-- If in state special, change colour
-			if currentState == levelStates.special or currentState == levelStates.complete or currentState == levelStates.starting then
+			if currentState == levelStates.special or currentState == levelStates.sijiao or currentState == levelStates.starting then
 				love.graphics.setBlendMode("lighten", "premultiplied")
 			end
 			love.graphics.draw(selectUL, selectX, selectY)
@@ -506,7 +507,7 @@ function evalClear(x1, y1, x2, y2)
 		if (math.abs(x1 - x2) + 1) * (math.abs(y1 - y2) + 1) == GRID_SIZE * GRID_SIZE then
 			easeType = sijiaoDisplay.ease
 			easeTime = sijiaoDisplay.timeTotal
-			currentState = levelStates.special
+			currentState = levelStates.sijiao
 		end
 		
 		local type = charms[x1][y1].type
@@ -524,7 +525,7 @@ function evalClear(x1, y1, x2, y2)
 		if count == GRID_SIZE * GRID_SIZE then
 			sijiaoDisplay.scale = 0
 			sijiaoDisplay.alpha = 1
-			flux.to(sijiaoDisplay, sijiaoDisplay.timeIn, {scale = 1}):after(sijiaoDisplay.timeOut, {alpha = 0}):oncomplete(function() currentState = levelStates.default end)
+			flux.to(sijiaoDisplay, sijiaoDisplay.timeIn, {scale = 1}):after(sijiaoDisplay.timeOut, {alpha = 0}):oncomplete(function() endSijiao() end)
 		end
 		
 		-- Tween clear rectangle
@@ -549,6 +550,12 @@ function evalClear(x1, y1, x2, y2)
 	else
 		if sfxRelease:isPlaying() then sfxRelease:stop() end
 		sfxRelease:play()
+	end
+end
+
+function endSijiao()
+	if currentState ~= levelStates.special then
+		currentState = levelStates.default
 	end
 end
 
@@ -700,9 +707,15 @@ function removeType(type)
 	-- Starts tweening through diagonals
 	-- Every time comboTween.diag changes, removeDiag(type) will be called
 	-- Once finished, clearRecent() will be called
+	local d = 1
+	if currentState == levelStates.sijiao then
+		d = sijiaoDisplay.timeTotal
+	end	
+	
 	currentState = levelStates.special
 	comboTween.diag = 1
-	flux.to(comboTween, comboTween.time, {diag = GRID_SIZE * 2 - 1}):ease("quartinout"):delay(clearTotal * 2):onstart(function () wipeRecent() end):onupdate(function () removeDiag(type) end):oncomplete(function () finishRemoving() end)
+	flux.to(comboTween, comboTween.time, {diag = GRID_SIZE * 2 - 1}):ease("linear"):delay(d):onstart(function () wipeRecent() end):onupdate(function () removeDiag(type) end):oncomplete(function () finishRemoving() end)
+
 end
 
 function finishRemoving()
